@@ -2,14 +2,13 @@ import streamlit as st
 import time
 import json
 import os
-import hashlib
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 
-# Securely load Hugging Face API Key from environment variable or Streamlit secrets
-api_key = os.getenv("HUGGINGFACE_API_KEY") or st.secrets.get("HUGGINGFACE_API_KEY")
+# Securely load Together AI API Key from environment variable or Streamlit secrets
+api_key = os.getenv("TOGETHER_API_KEY") or st.secrets.get("TOGETHER_API_KEY")
 if not api_key:
-    st.error("⚠️ Hugging Face API Key is missing! Set it in environment variables or Streamlit secrets.")
+    st.error("⚠️ Together AI API Key is missing! Set it in environment variables or Streamlit secrets.")
     st.stop()
 
 # Store the question count limit per day
@@ -26,36 +25,29 @@ def reset_question_limit():
         st.session_state["last_reset"] = current_date
 
 def generate_questions(topic, num_questions):
-    """Generates multiple-choice questions related to UPSC using Hugging Face's API."""
+    """Generates multiple-choice questions using Together AI's free API."""
     reset_question_limit()
     if st.session_state["question_count"] + num_questions > 300:
         st.error("⚠️ Daily limit reached! You can generate only 300 questions per day. Try again tomorrow.")
         return []
     
-    model = "bigscience/bloom-1b7"
-    api_url = f"https://api-inference.huggingface.co/models/{model}"
-    headers = {"Authorization": f"Bearer {api_key}"}
+    model = "togethercomputer/llama-2-7b-chat"
+    api_url = f"https://api.together.ai/v1/completions"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     prompt = f"Generate {num_questions} UPSC-level multiple-choice questions on {topic}. The questions should have 4 options and one correct answer. Format the output as JSON with fields: question, options, answer (A/B/C/D)."
     
     try:
-        response = requests.post(api_url, headers=headers, json={"inputs": prompt})
+        response = requests.post(api_url, headers=headers, json={"model": model, "prompt": prompt, "max_tokens": 512})
         if response.status_code != 200:
-            st.error(f"⚠️ Hugging Face API request failed. Status code: {response.status_code}")
+            st.error(f"⚠️ Together AI API request failed. Status code: {response.status_code}")
             return []
         
         response_json = response.json()
-        if not response_json:
-            st.error("⚠️ Received an empty response from Hugging Face API. Please try again later.")
+        if "choices" not in response_json or not response_json["choices"]:
+            st.error("⚠️ No questions generated. Please try again later.")
             return []
         
-        if isinstance(response_json, list) and len(response_json) > 0:
-            generated_text = response_json[0].get("generated_text", "")
-        elif isinstance(response_json, dict):
-            generated_text = response_json.get("generated_text", "")
-        else:
-            st.error("⚠️ Unexpected response format from Hugging Face API.")
-            return []
-        
+        generated_text = response_json["choices"][0].get("text", "")
         if generated_text:
             try:
                 questions = json.loads(generated_text)
