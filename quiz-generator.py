@@ -2,101 +2,51 @@ import streamlit as st
 import time
 import json
 import os
-import requests
+import random
 from datetime import datetime
 
-# Securely load Together AI API Key from environment variable or Streamlit secrets
-api_key = os.getenv("TOGETHER_API_KEY") or st.secrets.get("TOGETHER_API_KEY")
-if not api_key:
-    st.error("⚠️ Together AI API Key is missing! Set it in environment variables or Streamlit secrets.")
-    st.stop()
+# Load questions from JSON files
+QUESTION_PATH = "questions/"
 
-# Store the question count limit per day
-if "question_count" not in st.session_state:
-    st.session_state["question_count"] = 0
-if "last_reset" not in st.session_state:
-    st.session_state["last_reset"] = datetime.now().strftime("%Y-%m-%d")
+# Function to load questions from a JSON file
+def load_questions(subject, subsection):
+    file_path = os.path.join(QUESTION_PATH, f"{subject}_{subsection}.json")
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            return json.load(f)
+    return []
 
-def reset_question_limit():
-    """Resets the question count every 24 hours."""
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    if st.session_state["last_reset"] != current_date:
-        st.session_state["question_count"] = 0
-        st.session_state["last_reset"] = current_date
+# UPSC Subjects and their subsections
+UPSC_SUBJECTS = {
+    "History": ["Ancient India", "Medieval India", "Modern India", "World History"],
+    "Polity": ["Indian Constitution", "Governance", "Political Theories"],
+    "Economy": ["Microeconomics", "Macroeconomics", "Banking & Finance"],
+    "Geography": ["Physical Geography", "Indian Geography", "World Geography"],
+    "Science & Tech": ["Physics", "Biology", "Space Technology"],
+    "Current Affairs": ["International Relations", "National Issues", "Economic Developments"]
+}
 
-def generate_questions(topic, num_questions):
-    """Generates multiple-choice questions using Together AI's API with improved request formatting."""
-    reset_question_limit()
-    if st.session_state["question_count"] + num_questions > 300:
-        st.error("⚠️ Daily limit reached! You can generate only 300 questions per day. Try again tomorrow.")
-        return []
-    
-    model = "mistralai/Mistral-7B-Instruct-v0.1"
-    api_url = "https://api.together.ai/v1/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    prompt = (
-        f"Generate {num_questions} UPSC-level multiple-choice questions on {topic}. Each question should have 4 options labeled A, B, C, and D, and one correct answer. "
-        "Format the output as JSON with fields: 'question', 'options' (as a list), and 'answer' (A/B/C/D). Ensure the JSON is properly structured."
-    )
-    
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "max_tokens": 800,
-        "temperature": 0.7,
-        "top_p": 0.9,
-        "stop": ["\n"],
-    }
-    
-    try:
-        response = requests.post(api_url, headers=headers, json=payload)
-        if response.status_code != 200:
-            st.error(f"⚠️ Together AI API request failed. Status code: {response.status_code}, Message: {response.text}")
-            return []
-        
-        response_json = response.json()
-        if "choices" not in response_json or not response_json["choices"]:
-            st.error("⚠️ No questions generated. Please try again later.")
-            return []
-        
-        generated_text = response_json["choices"][0].get("text", "")
-        if generated_text:
-            try:
-                questions = json.loads(generated_text)
-                if isinstance(questions, list):
-                    st.session_state["question_count"] += num_questions
-                    return questions
-                else:
-                    st.error("⚠️ API response format incorrect. No valid questions found.")
-                    return []
-            except json.JSONDecodeError:
-                st.error("⚠️ Error decoding JSON response. The API may not have returned structured data.")
-                return []
-        else:
-            st.error("⚠️ No questions generated. Please try again later.")
-            return []
-    except requests.exceptions.RequestException as e:
-        st.error(f"⚠️ API request error: {e}")
-        return []
+# Function to get random questions
+def get_random_questions(subject, subsection, num_questions=25):
+    questions = load_questions(subject, subsection)
+    return random.sample(questions, min(num_questions, len(questions)))
 
 def conduct_quiz():
-    """Runs an AI-generated interactive UPSC quiz using Streamlit."""
-    st.set_page_config(page_title="UPSC AI Quiz 🏛️", layout="wide")
+    """Runs a UPSC quiz with pre-stored questions in JSON files."""
+    st.set_page_config(page_title="UPSC Quiz 🏛️", layout="wide")
     
-    st.title("🏛️ UPSC AI-Generated Quiz")
-    st.write("### Test your UPSC preparation with AI-generated MCQs!")
+    st.title("🏛️ UPSC Subject-Specific Quiz")
+    st.write("### Test your UPSC preparation with randomly selected MCQs!")
     
     player_name = st.text_input("👤 Enter your name and press Enter:")
-    topic = st.text_input("📚 Enter your UPSC topic (e.g., History, Polity, Economy, Geography, Science & Tech, Current Affairs):")
-    num_questions = st.slider("🔢 Select the number of questions:", 10, 50, 10)
+    subject = st.selectbox("📚 Select a Subject:", list(UPSC_SUBJECTS.keys()))
+    subsection = st.selectbox("📖 Select a Subsection:", UPSC_SUBJECTS[subject])
+    num_questions = 25  # Fixed to 25 questions per attempt
     
-    reset_question_limit()
-    st.write(f"📊 Questions generated today: {st.session_state['question_count']}/300")
-    
-    if player_name and topic and st.button("🎯 Start Quiz"):
-        questions = generate_questions(topic, num_questions)
+    if player_name and st.button("🎯 Start Quiz"):
+        questions = get_random_questions(subject, subsection, num_questions)
         if not questions:
-            st.warning("⚠️ Unable to generate questions at this time. Please try again later.")
+            st.warning("⚠️ No questions available for this subsection. Please try another.")
             return
         
         total_time = num_questions * 15
