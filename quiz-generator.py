@@ -25,21 +25,24 @@ def reset_question_limit():
         st.session_state["last_reset"] = current_date
 
 def generate_questions(topic, num_questions):
-    """Generates multiple-choice questions using Together AI's API with proper request formatting."""
+    """Generates multiple-choice questions using Together AI's API with improved request formatting."""
     reset_question_limit()
     if st.session_state["question_count"] + num_questions > 300:
         st.error("⚠️ Daily limit reached! You can generate only 300 questions per day. Try again tomorrow.")
         return []
     
-    model = "meta-llama/Llama-2-7b-chat-hf"
+    model = "mistralai/Mistral-7B-Instruct-v0.1"
     api_url = "https://api.together.ai/v1/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    prompt = f"Generate {num_questions} UPSC multiple-choice questions on {topic}. The questions should have 4 options and one correct answer. Format the output as JSON with fields: question, options, answer (A/B/C/D)."
+    prompt = (
+        f"Generate {num_questions} UPSC-level multiple-choice questions on {topic}. Each question should have 4 options labeled A, B, C, and D, and one correct answer. "
+        "Format the output as JSON with fields: 'question', 'options' (as a list), and 'answer' (A/B/C/D). Ensure the JSON is properly structured."
+    )
     
     payload = {
         "model": model,
         "prompt": prompt,
-        "max_tokens": 512,
+        "max_tokens": 800,
         "temperature": 0.7,
         "top_p": 0.9,
         "stop": ["\n"],
@@ -60,8 +63,12 @@ def generate_questions(topic, num_questions):
         if generated_text:
             try:
                 questions = json.loads(generated_text)
-                st.session_state["question_count"] += num_questions
-                return questions
+                if isinstance(questions, list):
+                    st.session_state["question_count"] += num_questions
+                    return questions
+                else:
+                    st.error("⚠️ API response format incorrect. No valid questions found.")
+                    return []
             except json.JSONDecodeError:
                 st.error("⚠️ Error decoding JSON response. The API may not have returned structured data.")
                 return []
