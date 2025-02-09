@@ -35,21 +35,33 @@ def generate_questions(topic, num_questions):
     model = "bigscience/bloom-1b7"
     api_url = f"https://api-inference.huggingface.co/models/{model}"
     headers = {"Authorization": f"Bearer {api_key}"}
-    prompt = f"Generate {num_questions} UPSC-level multiple-choice questions on {topic}. The questions should be challenging and aligned with the UPSC syllabus. Each question should have 4 options and one correct answer. Format the output as JSON with fields: question, options, answer (A/B/C/D)."
+    prompt = f"Generate {num_questions} UPSC-level multiple-choice questions on {topic}. The questions should have 4 options and one correct answer. Format the output as JSON with fields: question, options, answer (A/B/C/D)."
     
     response = requests.post(api_url, headers=headers, json={"inputs": prompt})
     
     if response.status_code == 200:
-        questions = response.json()["generated_text"]
         try:
-            questions = json.loads(questions)
-            st.session_state["question_count"] += num_questions
-            return questions
-        except json.JSONDecodeError:
-            st.error("⚠️ Error decoding response from Hugging Face API.")
+            response_json = response.json()
+            if isinstance(response_json, list) and len(response_json) > 0:
+                generated_text = response_json[0].get("generated_text", "")
+            elif isinstance(response_json, dict):
+                generated_text = response_json.get("generated_text", "")
+            else:
+                st.error("⚠️ Unexpected response format from Hugging Face API.")
+                return []
+            
+            if generated_text:
+                questions = json.loads(generated_text)
+                st.session_state["question_count"] += num_questions
+                return questions
+            else:
+                st.error("⚠️ No questions generated. Please try again later.")
+                return []
+        except (json.JSONDecodeError, KeyError) as e:
+            st.error(f"⚠️ Error processing response: {e}")
             return []
     else:
-        st.error("⚠️ Hugging Face API request failed. Please try again later.")
+        st.error(f"⚠️ Hugging Face API request failed. Status code: {response.status_code}")
         return []
 
 def conduct_quiz():
