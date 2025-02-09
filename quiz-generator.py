@@ -25,21 +25,30 @@ def reset_question_limit():
         st.session_state["last_reset"] = current_date
 
 def generate_questions(topic, num_questions):
-    """Generates multiple-choice questions using Together AI's free API."""
+    """Generates multiple-choice questions using Together AI's API with proper request formatting."""
     reset_question_limit()
     if st.session_state["question_count"] + num_questions > 300:
         st.error("⚠️ Daily limit reached! You can generate only 300 questions per day. Try again tomorrow.")
         return []
     
-    model = "togethercomputer/llama-2-7b-chat"
-    api_url = f"https://api.together.ai/v1/completions"
+    model = "meta-llama/Llama-2-7b-chat-hf"
+    api_url = "https://api.together.ai/v1/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    prompt = f"Generate {num_questions} UPSC-level multiple-choice questions on {topic}. The questions should have 4 options and one correct answer. Format the output as JSON with fields: question, options, answer (A/B/C/D)."
+    prompt = f"Generate {num_questions} UPSC multiple-choice questions on {topic}. The questions should have 4 options and one correct answer. Format the output as JSON with fields: question, options, answer (A/B/C/D)."
+    
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "max_tokens": 512,
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "stop": ["\n"],
+    }
     
     try:
-        response = requests.post(api_url, headers=headers, json={"model": model, "prompt": prompt, "max_tokens": 512})
+        response = requests.post(api_url, headers=headers, json=payload)
         if response.status_code != 200:
-            st.error(f"⚠️ Together AI API request failed. Status code: {response.status_code}")
+            st.error(f"⚠️ Together AI API request failed. Status code: {response.status_code}, Message: {response.text}")
             return []
         
         response_json = response.json()
