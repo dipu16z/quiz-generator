@@ -37,31 +37,38 @@ def generate_questions(topic, num_questions):
     headers = {"Authorization": f"Bearer {api_key}"}
     prompt = f"Generate {num_questions} UPSC-level multiple-choice questions on {topic}. The questions should have 4 options and one correct answer. Format the output as JSON with fields: question, options, answer (A/B/C/D)."
     
-    response = requests.post(api_url, headers=headers, json={"inputs": prompt})
-    
-    if response.status_code == 200:
-        try:
-            response_json = response.json()
-            if isinstance(response_json, list) and len(response_json) > 0:
-                generated_text = response_json[0].get("generated_text", "")
-            elif isinstance(response_json, dict):
-                generated_text = response_json.get("generated_text", "")
-            else:
-                st.error("⚠️ Unexpected response format from Hugging Face API.")
-                return []
-            
-            if generated_text:
+    try:
+        response = requests.post(api_url, headers=headers, json={"inputs": prompt})
+        if response.status_code != 200:
+            st.error(f"⚠️ Hugging Face API request failed. Status code: {response.status_code}")
+            return []
+        
+        response_json = response.json()
+        if not response_json:
+            st.error("⚠️ Received an empty response from Hugging Face API. Please try again later.")
+            return []
+        
+        if isinstance(response_json, list) and len(response_json) > 0:
+            generated_text = response_json[0].get("generated_text", "")
+        elif isinstance(response_json, dict):
+            generated_text = response_json.get("generated_text", "")
+        else:
+            st.error("⚠️ Unexpected response format from Hugging Face API.")
+            return []
+        
+        if generated_text:
+            try:
                 questions = json.loads(generated_text)
                 st.session_state["question_count"] += num_questions
                 return questions
-            else:
-                st.error("⚠️ No questions generated. Please try again later.")
+            except json.JSONDecodeError:
+                st.error("⚠️ Error decoding JSON response. The API may not have returned structured data.")
                 return []
-        except (json.JSONDecodeError, KeyError) as e:
-            st.error(f"⚠️ Error processing response: {e}")
+        else:
+            st.error("⚠️ No questions generated. Please try again later.")
             return []
-    else:
-        st.error(f"⚠️ Hugging Face API request failed. Status code: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        st.error(f"⚠️ API request error: {e}")
         return []
 
 def conduct_quiz():
